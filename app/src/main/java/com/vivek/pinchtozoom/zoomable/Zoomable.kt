@@ -53,6 +53,8 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun Zoomable(
+    selectedItem: Int,
+    onSelectItem: (Int) -> Unit,
     modifier: Modifier = Modifier,
     state: ZoomableState = rememberZoomableState(),
     enabled: Boolean = true,
@@ -60,9 +62,6 @@ fun Zoomable(
     onDismiss: () -> Boolean = { false },
     content: @Composable () -> Unit
 ) {
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    var zoom by remember { mutableStateOf(1f) }
-
     val dismissGestureEnabledState = rememberUpdatedState(dismissGestureEnabled)
     val scope = rememberCoroutineScope()
 
@@ -75,6 +74,9 @@ fun Zoomable(
                         state.onDrag(panChange)
                     }
                 }
+
+                // my code
+                onSelectItem(selectedItem)
             }
 
         LaunchedEffect(transformableState.isTransformInProgress, state.overZoomConfig) {
