@@ -1,41 +1,20 @@
 package com.vivek.pinchtozoom.zoomable
 
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.drag
-import androidx.compose.foundation.gestures.forEachGesture
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.center
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.consumePositionChange
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.toSize
-import com.mxalbert.zoomable.ZoomableState
-import com.mxalbert.zoomable.range
-import com.mxalbert.zoomable.rememberZoomableState
+import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastForEach
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -53,8 +32,6 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun Zoomable(
-    selectedItem: Int,
-    onSelectItem: (Int) -> Unit,
     modifier: Modifier = Modifier,
     state: ZoomableState = rememberZoomableState(),
     enabled: Boolean = true,
@@ -63,49 +40,23 @@ fun Zoomable(
     content: @Composable () -> Unit
 ) {
     val dismissGestureEnabledState = rememberUpdatedState(dismissGestureEnabled)
-    val scope = rememberCoroutineScope()
-
     val gesturesModifier = if (!enabled) Modifier else {
-        val transformableState =
-            rememberTransformableState { zoomChange, panChange, rotationChange ->
-                if (state.dismissDragAbsoluteOffsetY == 0f) {
-                    scope.launch {
-                        state.onZoomChange(zoomChange)
-                        state.onDrag(panChange)
-                    }
-                }
-
-                // my code
-                onSelectItem(selectedItem)
-            }
-
-        LaunchedEffect(transformableState.isTransformInProgress, state.overZoomConfig) {
-            if (!transformableState.isTransformInProgress) {
+        LaunchedEffect(state.isGestureInProgress, state.overZoomConfig) {
+            if (!state.isGestureInProgress) {
                 val range = state.overZoomConfig?.range
                 if (range?.contains(state.scale) == false) {
                     state.animateScaleTo(state.scale.coerceIn(range))
                 }
-
-                //  my code
-                state.animateScaleTo(
-                    targetScale = state.minSnapScale,
-                    targetTranslation = Offset.Zero
-                )
             }
         }
 
-        Modifier
-            .pointerInput(state) {
-                detectTapAndDragGestures(
-                    state = state,
-                    dismissGestureEnabled = dismissGestureEnabledState,
-                    onDismiss = onDismiss
-                )
-            }
-            .transformable(state = transformableState)
-            .graphicsLayer {
-                transformOrigin = TransformOrigin(0f, 0f)
-            }
+        Modifier.pointerInput(state) {
+            detectZoomableGestures(
+                state = state,
+                dismissGestureEnabled = dismissGestureEnabledState,
+                onDismiss = onDismiss
+            )
+        }
     }
 
     Box(
@@ -138,11 +89,11 @@ fun Zoomable(
     }
 }
 
-internal suspend fun PointerInputScope.detectTapAndDragGestures(
+internal suspend fun PointerInputScope.detectZoomableGestures(
     state: ZoomableState,
     dismissGestureEnabled: State<Boolean>,
     onDismiss: () -> Boolean
-) = coroutineScope {
+): Unit = coroutineScope {
     launch {
         detectTapGestures(
             onDoubleTap = { offset ->
@@ -162,12 +113,25 @@ internal suspend fun PointerInputScope.detectTapAndDragGestures(
         )
     }
     launch {
+        detectTransformGestures(
+            onGestureStart = { state.onGestureStart() },
+            onGesture = { centroid, pan, zoom ->
+                if (state.dismissDragAbsoluteOffsetY == 0f) {
+                    launch {
+                        state.onTransform(centroid, pan, zoom)
+                    }
+                }
+            },
+            onGestureEnd = { state.onTransformEnd() }
+        )
+    }
+    launch {
         detectDragGestures(
             state = state,
             dismissGestureEnabled = dismissGestureEnabled,
-            startDragImmediately = { state.isDragInProgress },
+            startDragImmediately = { state.isGestureInProgress },
             onDragStart = {
-                state.onDragStart()
+                state.onGestureStart()
                 state.addPosition(it.uptimeMillis, it.position)
             },
             onDrag = { change, dragAmount ->
@@ -251,5 +215,61 @@ private suspend fun PointerInputScope.detectDragGestures(
     }
 }
 
-private fun ZoomableState.calculateTargetTranslation(doubleTapPoint: Offset): Offset =
-    (size.toSize().center + Offset(translationX, translationY) - doubleTapPoint) / scale
+/**
+ * Simplified version of [androidx.compose.foundation.gestures.detectTransformGestures] which
+ * awaits two pointer downs (instead of one) and starts immediately without considering touch slop.
+ */
+private suspend fun PointerInputScope.detectTransformGestures(
+    onGestureStart: () -> Unit = {},
+    onGestureEnd: () -> Unit = {},
+    onGesture: (centroid: Offset, pan: Offset, zoom: Float) -> Unit
+) {
+    forEachGesture {
+        awaitPointerEventScope {
+            awaitTwoDowns(requireUnconsumed = false)
+            onGestureStart()
+            do {
+                val event = awaitPointerEvent()
+                val canceled = event.changes.fastAny { it.positionChangeConsumed() }
+                if (!canceled) {
+                    val zoomChange = event.calculateZoom()
+                    val panChange = event.calculatePan()
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    if (zoomChange != 1f || panChange != Offset.Zero) {
+                        onGesture(centroid, panChange, zoomChange)
+                    }
+                    event.changes.fastForEach {
+                        if (it.positionChanged()) {
+                            it.consumeAllChanges()
+                        }
+                    }
+                }
+            } while (!canceled && event.changes.fastAny { it.pressed })
+            onGestureEnd()
+        }
+    }
+}
+
+private suspend fun AwaitPointerEventScope.awaitTwoDowns(requireUnconsumed: Boolean = true) {
+    var event: PointerEvent
+    var firstDown: PointerId? = null
+    do {
+        event = awaitPointerEvent()
+        var downPointers = if (firstDown != null) 1 else 0
+        event.changes.fastForEach {
+            val isDown =
+                if (requireUnconsumed) it.changedToDown() else it.changedToDownIgnoreConsumed()
+            val isUp =
+                if (requireUnconsumed) it.changedToUp() else it.changedToUpIgnoreConsumed()
+            if (isUp && firstDown == it.id) {
+                firstDown = null
+                downPointers -= 1
+            }
+            if (isDown) {
+                firstDown = it.id
+                downPointers += 1
+            }
+        }
+        val satisfied = downPointers > 1
+    } while (!satisfied)
+}

@@ -16,13 +16,14 @@ import com.bumptech.glide.request.transition.Transition
 @SuppressLint("UnrememberedMutableState")
 @Composable
 fun loadImage(
-    @DrawableRes image: Int
+    url: String,
+//    @DrawableRes image: Int
 ): Bitmap? {
     var bitmap by mutableStateOf<Bitmap?>(null)
 
     Glide.with(LocalContext.current)
         .asBitmap()
-        .load(image)
+        .load(url)
         .into(object : CustomTarget<Bitmap>() {
             override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
                 bitmap = resource

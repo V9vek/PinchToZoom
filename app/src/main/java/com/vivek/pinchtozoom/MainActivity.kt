@@ -1,69 +1,58 @@
 package com.vivek.pinchtozoom
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.mxalbert.zoomable.rememberZoomableState
+import androidx.core.view.WindowCompat
+import com.google.accompanist.insets.ProvideWindowInsets
+import com.google.accompanist.insets.ui.Scaffold
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import com.vivek.pinchtozoom.ui.components.CustomTopAppBar
 import com.vivek.pinchtozoom.ui.theme.PinchToZoomTheme
 import com.vivek.pinchtozoom.util.loadImage
+import com.vivek.pinchtozoom.zoomable.OverZoomConfig
 import com.vivek.pinchtozoom.zoomable.Zoomable
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
+import com.vivek.pinchtozoom.zoomable.rememberZoomableState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         setContent {
-            val dummyList = (1..5).toList()
-            var currentItemSelected by remember { mutableStateOf(0) }
+            // Update the system bars to be translucent
+            val systemUiController = rememberSystemUiController()
+            SideEffect {
+                systemUiController.setSystemBarsColor(Color.White.copy(0.2f))
+            }
 
             PinchToZoomTheme {
-                Surface(color = MaterialTheme.colors.background) {
-                    LazyColumn {
-                        itemsIndexed(items = dummyList) { index, item ->
-                            MainCompose(
-                                index = index,
-                                onSelectItem = { currentItemSelected = it },
-                                currentItemSelected = currentItemSelected
-                            )
-                        }
-                    }
+                ProvideWindowInsets {
+                    Sample()
                 }
             }
         }
@@ -71,23 +60,49 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainCompose(
-    index: Int,
-    currentItemSelected: Int,
-    onSelectItem: (Int) -> Unit,
+fun Sample() {
+    // for showing zooming is happening or not
+    var isZooming by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = { CustomTopAppBar(isZooming = isZooming) }
+    ) { contentPadding ->
+        LazyColumn(
+            contentPadding = contentPadding,
+            modifier = Modifier
+                .fillMaxSize()
+                .animateContentSize()
+        ) {
+            items(items = provideList()) { img ->
+                val image = loadImage(url = img)
+                ZoomableItem(
+                    image = image,
+                    isZoomingToggled = { isZooming = it }
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+fun ZoomableItem(
+    image: Bitmap?,
+    isZoomingToggled: (Boolean) -> Unit
 ) {
-    val image = loadImage(image = R.drawable.pic)
-    val state = rememberZoomableState()
+    val state = rememberZoomableState(
+        overZoomConfig = OverZoomConfig(minSnapScale = 1f, maxSnapScale = 1f)
+    )
+
+    isZoomingToggled(state.isZooming)
 
     Zoomable(
-        selectedItem = index,
-        onSelectItem = onSelectItem,
         state = state,
         modifier = Modifier
             .fillMaxWidth()
             .height(250.dp)
             .padding(8.dp)
-            .zIndex(if (index == currentItemSelected) 1f else 0f)
+            .zIndex(if (state.isZooming) 1f else 0f)
     ) {
         image?.let { img ->
             Image(
@@ -95,20 +110,25 @@ fun MainCompose(
                 contentDescription = "",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .aspectRatio((img.width / img.height).toFloat())
-                    .zIndex(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
             )
         }
     }
 }
 
-
-
-
-
-
-
-
+private fun provideList() = listOf(
+    "https://images7.alphacoders.com/101/thumb-1920-1010687.jpg",
+    "https://images.alphacoders.com/718/thumb-1920-718631.png",
+    "https://images3.alphacoders.com/905/thumb-1920-905276.jpg",
+    "https://images.alphacoders.com/104/thumb-1920-1049984.jpg",
+    "https://images3.alphacoders.com/644/thumb-1920-644196.jpg",
+    "https://images8.alphacoders.com/840/thumb-1920-840020.png",
+    "https://images3.alphacoders.com/135/thumb-1920-135625.jpg",
+    "https://images7.alphacoders.com/652/thumb-1920-652552.jpg",
+    "https://images2.alphacoders.com/747/thumb-1920-747570.png",
+    "https://images7.alphacoders.com/607/thumb-1920-607718.png",
+)
 
 
 
