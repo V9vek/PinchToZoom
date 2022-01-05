@@ -30,12 +30,12 @@ import androidx.core.view.WindowCompat
 import com.google.accompanist.insets.ProvideWindowInsets
 import com.google.accompanist.insets.ui.Scaffold
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import com.mxalbert.zoomable.OverZoomConfig
+import com.mxalbert.zoomable.Zoomable
+import com.mxalbert.zoomable.rememberZoomableState
 import com.vivek.pinchtozoom.ui.components.CustomTopAppBar
 import com.vivek.pinchtozoom.ui.theme.PinchToZoomTheme
 import com.vivek.pinchtozoom.util.loadImage
-import com.vivek.pinchtozoom.zoomable.OverZoomConfig
-import com.vivek.pinchtozoom.zoomable.Zoomable
-import com.vivek.pinchtozoom.zoomable.rememberZoomableState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
